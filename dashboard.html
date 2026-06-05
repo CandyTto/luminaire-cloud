@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luminaire 云盘 | 我的空间</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+    <!-- 背景 -->
+    <div class="background-animation">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+    </div>
+
+    <!-- 全局粘贴监听区 -->
+    <div id="pasteCatcher" tabindex="0" style="position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;"></div>
+
+    <div class="app-container">
+        <!-- ==================== 侧边栏 ==================== -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fa-solid fa-cloud"></i> LUMINAIRE
+                </div>
+                <button class="sidebar-toggle" id="sidebarToggle" title="折叠侧边栏">
+                    <i class="fa-solid fa-angles-left"></i>
+                </button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-filter="all">
+                    <i class="fa-solid fa-folder-open"></i>
+                    <span class="nav-label">全部文件</span>
+                    <span class="nav-count" id="countAll">0</span>
+                </a>
+                <a href="#" class="nav-item" data-filter="image">
+                    <i class="fa-solid fa-image"></i>
+                    <span class="nav-label">照片</span>
+                    <span class="nav-count" id="countImage">0</span>
+                </a>
+                <a href="#" class="nav-item" data-filter="video">
+                    <i class="fa-solid fa-video"></i>
+                    <span class="nav-label">视频</span>
+                    <span class="nav-count" id="countVideo">0</span>
+                </a>
+                <a href="#" class="nav-item" data-filter="document">
+                    <i class="fa-solid fa-file-lines"></i>
+                    <span class="nav-label">文档</span>
+                    <span class="nav-count" id="countDoc">0</span>
+                </a>
+            </nav>
+
+            <!-- 管理员面板入口 -->
+            <div class="admin-entry" id="adminEntry" style="display:none;">
+                <button class="admin-btn" id="adminBtn">
+                    <i class="fa-solid fa-users-gear"></i>
+                    <span>用户管理</span>
+                </button>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="storage-info">
+                    <div class="storage-header">
+                        <i class="fa-solid fa-database"></i>
+                        <span>存储空间</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress" id="storageProgress" style="width: 0%;"></div>
+                    </div>
+                    <p id="storageText">计算中...</p>
+                </div>
+                <div class="user-info" id="sidebarUser">
+                    <img src="https://api.dicebear.com/6.x/avataaars/svg?seed=default" alt="Avatar" class="avatar-small">
+                    <div class="user-detail">
+                        <span class="user-name" id="sidebarUsername">用户</span>
+                        <span class="user-role" id="sidebarRole">user</span>
+                    </div>
+                    <button class="logout-btn" id="logoutBtn" title="退出登录">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ==================== 主内容区 ==================== -->
+        <main class="main-content" id="mainContent">
+            <!-- 顶栏 -->
+            <header class="top-bar">
+                <div class="top-left">
+                    <button class="menu-btn" id="menuBtn" title="菜单">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div class="search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="searchInput" placeholder="搜索文件..." autocomplete="off">
+                        <button class="search-clear" id="searchClear" style="display:none;">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="top-right">
+                    <!-- 批量操作工具栏 -->
+                    <div class="batch-toolbar" id="batchToolbar" style="display:none;">
+                        <span class="batch-count" id="batchCount">已选 0 项</span>
+                        <button class="batch-btn download" id="batchDownload" title="批量下载">
+                            <i class="fa-solid fa-download"></i> 下载
+                        </button>
+                        <button class="batch-btn delete" id="batchDelete" title="批量删除">
+                            <i class="fa-solid fa-trash-can"></i> 删除
+                        </button>
+                        <button class="batch-btn cancel" id="batchCancel">
+                            <i class="fa-solid fa-xmark"></i> 取消
+                        </button>
+                    </div>
+
+                    <button class="upload-btn-main" id="uploadBtn">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>上传文件</span>
+                    </button>
+                    <input type="file" id="fileInput" hidden multiple accept="*/*">
+
+                    <div class="user-profile" id="userProfile">
+                        <img src="https://api.dicebear.com/6.x/avataaars/svg?seed=default" alt="Avatar" class="avatar" id="avatarImg">
+                        <span class="profile-name" id="profileName">用户</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 上传进度区 -->
+            <div class="upload-progress-container" id="uploadProgressContainer" style="display:none;">
+                <div class="upload-progress-header">
+                    <span><i class="fa-solid fa-upload"></i> 上传中...</span>
+                    <span class="upload-stats" id="uploadStats"></span>
+                </div>
+                <div class="upload-progress-list" id="uploadProgressList"></div>
+            </div>
+
+            <!-- 拖拽上传区 -->
+            <section class="drop-zone" id="dropZone">
+                <div class="drop-content">
+                    <div class="drop-icon-wrapper">
+                        <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
+                    </div>
+                    <p class="drop-title">拖拽文件或文件夹到此处上传</p>
+                    <p class="drop-subtitle">或者 <span class="drop-link" id="dropBrowse">点击浏览</span> 选择文件</p>
+                    <div class="drop-formats">
+                        <span><i class="fa-solid fa-image"></i> 图片</span>
+                        <span><i class="fa-solid fa-video"></i> 视频</span>
+                        <span><i class="fa-solid fa-file"></i> 文档</span>
+                        <span><i class="fa-solid fa-music"></i> 音频</span>
+                    </div>
+                    <p class="drop-paste-hint">
+                        <i class="fa-solid fa-keyboard"></i> 也可以使用 Ctrl+V 粘贴上传
+                    </p>
+                </div>
+            </section>
+
+            <!-- 文件列表区 -->
+            <section class="file-section">
+                <div class="file-section-header">
+                    <h3 id="sectionTitle">全部文件</h3>
+                    <div class="file-view-options">
+                        <button class="view-btn active" data-view="grid" title="网格视图">
+                            <i class="fa-solid fa-grid-2"></i>
+                        </button>
+                        <button class="view-btn" data-view="list" title="列表视图">
+                            <i class="fa-solid fa-list"></i>
+                        </button>
+                        <button class="refresh-btn" id="refreshBtn" title="刷新">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 选择全部 -->
+                <div class="select-all-row" id="selectAllRow" style="display:none;">
+                    <label class="select-all-label">
+                        <input type="checkbox" id="selectAllCheckbox">
+                        <span>全选</span>
+                    </label>
+                </div>
+
+                <!-- 文件网格 -->
+                <div class="file-grid" id="fileGrid">
+                    <!-- 动态渲染 -->
+                </div>
+
+                <!-- 空状态 -->
+                <div class="empty-state" id="emptyState" style="display:none;">
+                    <div class="empty-icon">
+                        <i class="fa-solid fa-folder-open"></i>
+                    </div>
+                    <p class="empty-title">没有文件</p>
+                    <p class="empty-desc">上传您的第一个文件开始使用吧</p>
+                    <button class="empty-upload-btn" id="emptyUploadBtn">
+                        <i class="fa-solid fa-plus"></i> 上传文件
+                    </button>
+                </div>
+
+                <!-- 加载指示器 -->
+                <div class="loading-indicator" id="loadingIndicator">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <span>加载文件中...</span>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- ==================== 文件预览模态框 ==================== -->
+    <div class="modal-overlay" id="previewModal" style="display:none;">
+        <div class="modal-backdrop" id="previewBackdrop"></div>
+        <div class="preview-container">
+            <div class="preview-header">
+                <span class="preview-filename" id="previewFilename">文件名</span>
+                <div class="preview-actions">
+                    <button class="preview-btn download" id="previewDownload" title="下载">
+                        <i class="fa-solid fa-download"></i> 下载
+                    </button>
+                    <button class="preview-btn delete" id="previewDelete" title="删除">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                    <button class="preview-btn close" id="previewClose" title="关闭">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="preview-body">
+                <img id="previewImage" src="" alt="预览" style="display:none;">
+                <video id="previewVideo" controls style="display:none;" playsinline></video>
+                <div class="preview-unsupported" id="previewUnsupported" style="display:none;">
+                    <i class="fa-solid fa-file"></i>
+                    <p>此文件类型不支持预览</p>
+                    <button class="preview-btn download" id="previewUnsupportedDownload">
+                        <i class="fa-solid fa-download"></i> 下载文件
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 删除密码验证模态框 ==================== -->
+    <div class="modal-overlay" id="deletePasswordModal" style="display:none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <i class="fa-solid fa-shield-halved modal-icon danger"></i>
+                <h3>安全验证</h3>
+                <p>请输入删除密码以确认操作</p>
+            </div>
+            <div class="modal-body">
+                <div class="delete-info" id="deleteInfo"></div>
+                <div class="input-group modal-input">
+                    <i class="fa-solid fa-lock input-icon"></i>
+                    <input type="password" id="deletePasswordInput" placeholder="请输入删除密码" autocomplete="off">
+                </div>
+                <div class="modal-error" id="deletePasswordError" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="deleteCancelBtn">取消</button>
+                <button class="modal-btn confirm danger" id="deleteConfirmBtn">
+                    <i class="fa-solid fa-trash-can"></i> 确认删除
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 管理员面板模态框 ==================== -->
+    <div class="modal-overlay" id="adminModal" style="display:none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog admin-dialog">
+            <div class="modal-header">
+                <i class="fa-solid fa-users-gear modal-icon primary"></i>
+                <h3>用户管理</h3>
+                <p>管理您创建的子用户账号</p>
+            </div>
+            <div class="modal-body">
+                <!-- 创建用户 -->
+                <div class="admin-create-section">
+                    <h4><i class="fa-solid fa-user-plus"></i> 创建新用户</h4>
+                    <div class="admin-create-form">
+                        <input type="text" id="newUsername" placeholder="用户名" autocomplete="off">
+                        <input type="password" id="newUserPassword" placeholder="登录密码" autocomplete="off">
+                        <button class="admin-create-btn" id="createUserBtn">
+                            <i class="fa-solid fa-plus"></i> 创建
+                        </button>
+                    </div>
+                    <div class="admin-create-error" id="adminCreateError" style="display:none;"></div>
+                </div>
+
+                <!-- 用户列表 -->
+                <div class="admin-user-list-section">
+                    <h4><i class="fa-solid fa-list-ul"></i> 管理的用户</h4>
+                    <div class="admin-user-list" id="adminUserList">
+                        <div class="admin-user-empty">
+                            <i class="fa-solid fa-user-group"></i>
+                            <p>暂无管理的用户</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" id="adminCloseBtn">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 消息提示 ==================== -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        if (typeof window.supabaseCreateClient === 'undefined' && typeof supabase !== 'undefined') {
+            window.supabaseCreateClient = supabase.createClient;
+        }
+    </script>
+    <script src="supabase.js"></script>
+    <script src="auth.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>

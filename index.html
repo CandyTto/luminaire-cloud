@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Luminaire 云盘 | 登录</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-animation">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+    </div>
+
+    <div class="login-wrapper">
+        <div class="brand-panel">
+            <div class="brand-content">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-cloud"></i>
+                </div>
+                <h1>LUMINAIRE</h1>
+                <p>化繁为简，体验极致的数字交互空间。</p>
+                <div class="brand-features">
+                    <span><i class="fa-solid fa-shield-halved"></i> 安全隔离</span>
+                    <span><i class="fa-solid fa-bolt"></i> 极速传输</span>
+                    <span><i class="fa-solid fa-infinity"></i> 无限可能</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-panel">
+            <div class="form-header">
+                <h2>欢迎回来</h2>
+                <p>请输入您的账号凭证以继续</p>
+            </div>
+
+            <form id="loginForm" autocomplete="off">
+                <div class="error-message" id="errorMessage" style="display:none;">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <span id="errorText"></span>
+                </div>
+
+                <div class="input-group">
+                    <i class="fa-solid fa-user input-icon"></i>
+                    <input type="text" id="username" required autocomplete="off" placeholder=" ">
+                    <label for="username">用户名</label>
+                    <div class="input-line"></div>
+                </div>
+
+                <div class="input-group">
+                    <i class="fa-solid fa-lock input-icon"></i>
+                    <input type="password" id="password" required placeholder=" ">
+                    <label for="password">密码</label>
+                    <div class="input-line"></div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    <span class="btn-text">立即登录</span>
+                    <span class="btn-loader" style="display:none;">
+                        <i class="fa-solid fa-spinner fa-spin"></i> 验证中...
+                    </span>
+                </button>
+
+                <div class="login-hint">
+                    <span>默认管理员账号: admin / 密码: 111</span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // 兼容 Supabase CDN 的全局变量名
+        if (typeof window.supabaseCreateClient === 'undefined' && typeof supabase !== 'undefined') {
+            window.supabaseCreateClient = supabase.createClient;
+        }
+    </script>
+    <script src="supabase.js"></script>
+    <script src="auth.js"></script>
+    <script>
+        (function() {
+            // 如果已登录，直接跳转到仪表盘
+            if (isLoggedIn()) {
+                window.location.href = 'dashboard.html';
+                return;
+            }
+
+            const loginForm = document.getElementById('loginForm');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const btnLoader = submitBtn.querySelector('.btn-loader');
+            const errorMessage = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+
+            function showError(msg) {
+                errorText.textContent = msg;
+                errorMessage.style.display = 'flex';
+                errorMessage.style.animation = 'none';
+                errorMessage.offsetHeight; // trigger reflow
+                errorMessage.style.animation = 'shake 0.5s ease';
+            }
+
+            function hideError() {
+                errorMessage.style.display = 'none';
+            }
+
+            function setLoading(loading) {
+                if (loading) {
+                    submitBtn.disabled = true;
+                    btnText.style.display = 'none';
+                    btnLoader.style.display = 'inline';
+                } else {
+                    submitBtn.disabled = false;
+                    btnText.style.display = 'inline';
+                    btnLoader.style.display = 'none';
+                }
+            }
+
+            // 处理登录
+            async function handleLogin(e) {
+                e.preventDefault();
+                hideError();
+
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+
+                if (!username || !password) {
+                    showError('请输入用户名和密码');
+                    return;
+                }
+
+                setLoading(true);
+
+                try {
+                    const result = await loginUser(username, password);
+                    if (result.success) {
+                        // 登录成功，跳转到仪表盘
+                        submitBtn.classList.add('success-pulse');
+                        setTimeout(() => {
+                            window.location.href = 'dashboard.html';
+                        }, 400);
+                    } else {
+                        showError(result.error || '登录失败');
+                        setLoading(false);
+                        // 震动效果
+                        loginForm.style.animation = 'none';
+                        loginForm.offsetHeight;
+                        loginForm.style.animation = 'shake 0.5s ease';
+                    }
+                } catch (err) {
+                    showError('网络错误，请检查连接');
+                    setLoading(false);
+                }
+            }
+
+            // 表单提交
+            loginForm.addEventListener('submit', handleLogin);
+
+            // Enter 键登录 - 在任何输入框中按 Enter 都可提交
+            usernameInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (passwordInput.value) {
+                        handleLogin(e);
+                    } else {
+                        passwordInput.focus();
+                    }
+                }
+            });
+
+            passwordInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (usernameInput.value) {
+                        handleLogin(e);
+                    } else {
+                        usernameInput.focus();
+                    }
+                }
+            });
+
+            // 输入时隐藏错误
+            usernameInput.addEventListener('input', hideError);
+            passwordInput.addEventListener('input', hideError);
+
+            // 自动聚焦
+            usernameInput.focus();
+        })();
+    </script>
+</body>
+</html>
