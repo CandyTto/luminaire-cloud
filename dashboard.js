@@ -257,7 +257,11 @@ function preventDefaults(e) {
 
 async function loadFiles() {
   const sb = getSupabase();
-  if (!sb || !currentUser) return;
+  if (!sb) {
+    showToast('数据库连接失败，请刷新页面重试', 'error');
+    return;
+  }
+  if (!currentUser) return;
 
   const loadingEl = document.getElementById('loadingIndicator');
   loadingEl.style.display = 'flex';
@@ -518,7 +522,11 @@ function handleDrop(e) {
 
 async function uploadFiles(files) {
   const sb = getSupabase();
-  if (!sb || !currentUser) return;
+  if (!sb) {
+    showToast('数据库连接失败，请刷新页面重试', 'error');
+    return;
+  }
+  if (!currentUser) return;
   if (isUploading) {
     showToast('请等待当前上传完成', 'info');
     return;
@@ -596,6 +604,10 @@ async function uploadSingleFile(file, progressItem, sb) {
   const statusEl = progressItem.querySelector('.progress-status');
   const progressFill = progressItem.querySelector('.progress-fill');
 
+  // 调试日志
+  console.log('[Upload] 开始上传:', file.name, '大小:', file.size, '类型:', file.type);
+  console.log('[Upload] 当前用户:', currentUser?.id, currentUser?.username);
+
   try {
     statusEl.textContent = '上传中...';
 
@@ -604,49 +616,61 @@ async function uploadSingleFile(file, progressItem, sb) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._\-一-鿿]/g, '_');
     const storagePath = `${currentUser.id}/${timestamp}-${safeName}`;
 
+    console.log('[Upload] 存储路径:', storagePath);
+    console.log('[Upload] Bucket:', STORAGE_BUCKET);
+
     // 上传到 Supabase Storage
-    const { error: uploadError } = await sb.storage
+    const { data: uploadData, error: uploadError } = await sb.storage
       .from(STORAGE_BUCKET)
       .upload(storagePath, file, {
         cacheControl: '3600',
         upsert: false,
       });
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      console.error('[Upload] Storage 上传失败:', uploadError);
+      throw new Error('Storage 上传失败: ' + (uploadError.message || JSON.stringify(uploadError)));
+    }
+
+    console.log('[Upload] Storage 上传成功:', uploadData);
 
     progressFill.style.width = '80%';
     statusEl.textContent = '保存中...';
 
-    // 获取公开 URL（或签名 URL）
-    const { data: urlData } = sb.storage
-      .from(STORAGE_BUCKET)
-      .getPublicUrl(storagePath);
-
     // 创建文件记录
     const category = getFileCategory(file.type);
-    const { error: dbError } = await sb
-      .from('files')
-      .insert({
-        user_id: currentUser.id,
-        filename: safeName,
-        original_name: file.name,
-        file_type: file.type,
-        file_size: file.size,
-        storage_path: storagePath,
-        category: category,
-      });
+    const fileRecord = {
+      user_id: currentUser.id,
+      filename: safeName,
+      original_name: file.name,
+      file_type: file.type,
+      file_size: file.size,
+      storage_path: storagePath,
+      category: category,
+    };
+    console.log('[Upload] 准备插入数据库:', fileRecord);
 
-    if (dbError) throw dbError;
+    const { data: dbData, error: dbError } = await sb
+      .from('files')
+      .insert(fileRecord)
+      .select();
+
+    if (dbError) {
+      console.error('[Upload] 数据库插入失败:', dbError);
+      throw new Error('数据库记录失败: ' + (dbError.message || JSON.stringify(dbError)));
+    }
+
+    console.log('[Upload] 数据库插入成功:', dbData);
 
     progressFill.style.width = '100%';
     statusEl.textContent = '完成';
     statusEl.classList.add('success');
     return true;
   } catch (err) {
-    console.error('上传失败:', file.name, err);
+    console.error('[Upload] 上传失败:', file.name, err);
     progressFill.style.width = '100%';
     progressFill.style.background = '#ef4444';
-    statusEl.textContent = '失败';
+    statusEl.textContent = '失败: ' + (err.message || '未知错误');
     statusEl.classList.add('error');
     return false;
   }
@@ -899,8 +923,9 @@ async function handleDeleteConfirm() {
   }
 
   if (deleteCallback) {
+    const cb = deleteCallback;
     closeDeletePasswordModal();
-    await deleteCallback(password);
+    await cb(password);
   }
 }
 
