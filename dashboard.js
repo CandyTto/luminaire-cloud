@@ -622,11 +622,15 @@ async function uploadSingleFile(file, progressItem, sb) {
     statusEl.textContent = '上传中...';
 
     const timestamp = Date.now();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._\-一-鿿㐀-䶿]/g, '_');
+    // Storage 路径只能使用 ASCII 安全字符（中文字符会导致 Invalid key）
+    const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : '';
+    const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+    let safeBase = baseName.replace(/[^a-zA-Z0-9._\-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+    if (!safeBase || safeBase.length === 0) safeBase = 'file';
+    const safeName = safeBase + ext;
     const storagePath = `${currentUser.id}/${timestamp}-${safeName}`;
 
     console.log('[Upload] 存储路径:', storagePath);
-    console.log('[Upload] Bucket:', STORAGE_BUCKET);
 
     // 大文件使用 TUS 断点续传（> 20MB），小文件直接上传
     const useTus = file.size > 20 * 1024 * 1024;
@@ -1026,6 +1030,8 @@ function closePreview() {
 // ==================== 删除密码模态框 ====================
 
 function showDeletePasswordModal(info, callback) {
+  // 先关闭管理员面板，防止遮挡删除弹窗
+  closeAdminModal();
   document.getElementById('deleteInfo').textContent = info;
   document.getElementById('deletePasswordInput').value = '';
   document.getElementById('deletePasswordError').style.display = 'none';
