@@ -10,26 +10,26 @@ const SUPABASE_CONFIG = {
 };
 
 // 初始化 Supabase 客户端（需要先加载 supabase-js CDN）
-let supabase = null;
+let supabaseClient = null;
 
 function initSupabase() {
   if (typeof supabaseCreateClient === 'undefined') {
     console.error('Supabase JS 库未加载，请检查 CDN 连接');
     return null;
   }
-  if (!supabase) {
-    supabase = supabaseCreateClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
+  if (!supabaseClient) {
+    supabaseClient = supabaseCreateClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
       db: { schema: 'public' },
       storage: {},
     });
   }
-  return supabase;
+  return supabaseClient;
 }
 
 // 获取 Supabase 实例
 function getSupabase() {
-  if (!supabase) return initSupabase();
-  return supabase;
+  if (!supabaseClient) return initSupabase();
+  return supabaseClient;
 }
 
 // 常量
