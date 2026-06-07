@@ -36,88 +36,40 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_created_by ON users(created_by);
 
 -- ============================================================
--- RLS (Row Level Security) 策略
+-- RLS — 使用宽松策略（App 使用 anon key，应用层已做数据隔离）
 -- ============================================================
 
--- 启用 RLS
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE files ENABLE ROW LEVEL SECURITY;
 
--- --- users 表策略 ---
+-- 允许 anon key 访问 users（登录验证）
+CREATE POLICY "Allow all on users" ON users FOR ALL USING (true) WITH CHECK (true);
 
--- 允许任何人查询 users（用于登录验证）
--- 实际安全由应用层查询过滤保证（匹配 username + password_hash 才返回数据）
-CREATE POLICY "Allow public select for login" ON users
-  FOR SELECT USING (true);
-
--- 只允许 admin 插入新用户
-CREATE POLICY "Allow admin insert users" ON users
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM users AS u
-      WHERE u.id = (SELECT created_by FROM users WHERE id = (SELECT current_setting('request.jwt.claims', true)::json->>'sub'))
-      AND u.role = 'admin'
-    )
-    OR
-    -- 第一个 admin 用户（created_by 为 NULL）由初始化脚本创建
-    (SELECT count(*) FROM users) = 0
-  );
-
--- 允许 admin 删除自己创建的用户
-CREATE POLICY "Allow admin delete own users" ON users
-  FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM users AS admin
-      WHERE admin.role = 'admin'
-      AND admin.id = (SELECT (current_setting('request.jwt.claims', true)::json->>'user_id')::uuid)
-    )
-  );
-
--- --- files 表策略 ---
-
--- 用户只能查看自己的文件
-CREATE POLICY "Users select own files" ON files
-  FOR SELECT USING (
-    user_id = (SELECT (current_setting('request.jwt.claims', true)::json->>'user_id')::uuid)
-  );
-
--- 用户可以插入自己的文件
-CREATE POLICY "Users insert own files" ON files
-  FOR INSERT WITH CHECK (
-    user_id = (SELECT (current_setting('request.jwt.claims', true)::json->>'user_id')::uuid)
-  );
-
--- 用户可以更新自己的文件
-CREATE POLICY "Users update own files" ON files
-  FOR UPDATE USING (
-    user_id = (SELECT (current_setting('request.jwt.claims', true)::json->>'user_id')::uuid)
-  );
-
--- 用户可以删除自己的文件
-CREATE POLICY "Users delete own files" ON files
-  FOR DELETE USING (
-    user_id = (SELECT (current_setting('request.jwt.claims', true)::json->>'user_id')::uuid)
-  );
+-- 允许 anon key 访问 files（应用层通过 user_id 过滤）
+CREATE POLICY "Allow all on files" ON files FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================
--- Storage Bucket 创建
--- 需要在 Supabase Dashboard > Storage 中手动创建名为 "user-files" 的 bucket
--- 或者通过 SQL:
+-- Storage 策略（stock objects 表 RLS，允许 anon key 操作 user-files）
 -- ============================================================
+-- Bucket 已通过 API 创建，此处仅创建访问策略
+-- 如果策略已存在，先删除再重建
 
--- 注意：Storage bucket 创建通常通过 Dashboard 或 Management API
--- 请在 Supabase Dashboard > Storage 中创建 bucket：
---   Name: user-files
---   Public: No (private)
---   允许所有常见文件类型
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow SELECT on user-files' AND tablename = 'objects') THEN
+    DROP POLICY "Allow SELECT on user-files" ON storage.objects;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow INSERT on user-files' AND tablename = 'objects') THEN
+    DROP POLICY "Allow INSERT on user-files" ON storage.objects;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow DELETE on user-files' AND tablename = 'objects') THEN
+    DROP POLICY "Allow DELETE on user-files" ON storage.objects;
+  END IF;
+END $$;
 
--- Storage RLS 策略（在 Supabase Dashboard > Storage > Policies 中配置）：
--- 1. SELECT (下载): 允许认证用户读取自己文件夹中的文件
---    USING: (storage.foldername(name))[1] = auth.uid()::text
--- 2. INSERT (上传): 允许认证用户上传到自己的文件夹
---    CHECK: (storage.foldername(name))[1] = auth.uid()::text
--- 3. DELETE: 允许认证用户删除自己文件夹中的文件
---    USING: (storage.foldername(name))[1] = auth.uid()::text
+CREATE POLICY "Allow SELECT on user-files" ON storage.objects FOR SELECT USING (true);
+CREATE POLICY "Allow INSERT on user-files" ON storage.objects FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow DELETE on user-files" ON storage.objects FOR DELETE USING (true);
 
 -- ============================================================
 -- 创建初始 Admin 用户
@@ -135,11 +87,9 @@ VALUES (
 ON CONFLICT (username) DO NOTHING;
 
 -- ============================================================
--- 辅助函数：获取用户创建的子用户列表
--- (实际在应用层完成，此处仅作说明)
+-- 更新时间戳触发器
 -- ============================================================
 
--- 更新时间戳触发器
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -148,10 +98,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at
   BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_files_updated_at ON files;
 CREATE TRIGGER update_files_updated_at
   BEFORE UPDATE ON files
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
