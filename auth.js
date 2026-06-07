@@ -207,6 +207,41 @@ async function adminDeleteUser(userId, deletePassword) {
   }
 }
 
+// ==================== 修改密码 ====================
+
+async function changePassword(userId, oldPassword, newPassword) {
+  const sb = getSupabase();
+  if (!sb) return { success: false, error: '无法连接数据库' };
+
+  try {
+    const oldHash = await hashPassword(oldPassword);
+
+    // 验证当前密码
+    const { data: user, error: checkError } = await sb
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .eq('password_hash', oldHash)
+      .maybeSingle();
+
+    if (checkError) throw checkError;
+    if (!user) return { success: false, error: '当前密码错误' };
+
+    // 更新密码
+    const newHash = await hashPassword(newPassword);
+    const { error: updateError } = await sb
+      .from('users')
+      .update({ password_hash: newHash })
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+    return { success: true };
+  } catch (err) {
+    console.error('修改密码失败:', err);
+    return { success: false, error: '修改密码失败，请稍后重试' };
+  }
+}
+
 // ==================== 初始化检查 ====================
 
 function checkAuthOnLoad() {

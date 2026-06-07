@@ -236,6 +236,13 @@
             <div class="preview-body">
                 <img id="previewImage" src="" alt="预览" style="display:none;">
                 <video id="previewVideo" controls style="display:none;" playsinline></video>
+                <pre id="previewText" class="text-preview" style="display:none;"></pre>
+                <iframe id="previewDoc" class="doc-preview" style="display:none;" sandbox="allow-scripts allow-same-origin"></iframe>
+                <div class="audio-preview-wrap" id="previewAudioWrap" style="display:none;">
+                    <i class="fa-solid fa-music"></i>
+                    <p id="previewAudioName" style="color:#e2e8f0;font-size:0.95rem;margin-bottom:10px;"></p>
+                    <audio id="previewAudio" controls></audio>
+                </div>
                 <div class="preview-unsupported" id="previewUnsupported" style="display:none;">
                     <i class="fa-solid fa-file"></i>
                     <p>此文件类型不支持预览</p>
@@ -294,6 +301,20 @@
                         </button>
                     </div>
                     <div class="admin-create-error" id="adminCreateError" style="display:none;"></div>
+                </div>
+
+                <!-- 修改密码 -->
+                <div class="admin-create-section">
+                    <h4><i class="fa-solid fa-key"></i> 修改登录密码</h4>
+                    <div class="admin-create-form">
+                        <input type="password" id="changePwdOld" placeholder="当前密码" autocomplete="off">
+                        <input type="password" id="changePwdNew" placeholder="新密码" autocomplete="off">
+                        <button class="admin-create-btn" id="changePwdBtn">
+                            <i class="fa-solid fa-check"></i> 修改
+                        </button>
+                    </div>
+                    <div class="admin-create-error" id="changePwdError" style="display:none;"></div>
+                    <div class="admin-create-success" id="changePwdSuccess" style="display:none;"></div>
                 </div>
 
                 <!-- 用户列表 -->

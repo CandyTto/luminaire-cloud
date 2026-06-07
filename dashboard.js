@@ -200,6 +200,7 @@ function bindEvents() {
   document.getElementById('newUserPassword').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleCreateUser();
   });
+  document.getElementById('changePwdBtn').addEventListener('click', handleChangePassword);
 
   // 侧边栏折叠
   document.getElementById('sidebarToggle').addEventListener('click', () => {
@@ -369,6 +370,8 @@ function renderFiles() {
     const isSelected = selectedFiles.has(file.id);
     const isImage = file.category === 'image';
     const isVideo = file.category === 'video';
+    const isAudio = file.category === 'audio';
+    const hasThumb = isImage || isVideo || isAudio;
     const iconClass = getFileIcon(file.file_type);
     const style = `animation-delay: ${Math.min(index * 0.03, 0.5)}s`;
 
@@ -384,9 +387,10 @@ function renderFiles() {
           </button>
         </div>
         <div class="file-thumb" data-preview="${file.id}">
-          ${(isImage || isVideo) ?
+          ${hasThumb ?
             `<img src="${getThumbnailUrl(file)}" alt="${escapeHtml(file.original_name)}" loading="lazy">
-             ${isVideo ? '<div class="video-overlay"><i class="fa-solid fa-play"></i></div>' : ''}` :
+             ${isVideo ? '<div class="video-overlay"><i class="fa-solid fa-play"></i></div>' : ''}
+             ${isAudio ? '<div class="video-overlay" style="background:rgba(0,0,0,0.2);"><i class="fa-solid fa-music"></i></div>' : ''}` :
             `<i class="fa-solid ${iconClass} file-type-icon"></i>`
           }
         </div>
@@ -605,26 +609,36 @@ async function uploadSingleFile(file, progressItem, sb) {
   const progressFill = progressItem.querySelector('.progress-fill');
 
   // 调试日志
-  console.log('[Upload] 开始上传:', file.name, '大小:', file.size, '类型:', file.type);
-  console.log('[Upload] 当前用户:', currentUser?.id, currentUser?.username);
+  console.log('[Upload] 开始上传:', file.name, '大小:', file.size, '类型:', file.type || '(检测中)');
+
+  // 自动检测 MIME 类型（处理无扩展名或异常类型的情况）
+  let mimeType = file.type;
+  if (!mimeType || mimeType === '' || mimeType === 'application/octet-stream') {
+    mimeType = detectMimeType(file.name);
+    console.log('[Upload] MIME 类型自动检测:', mimeType);
+  }
 
   try {
     statusEl.textContent = '上传中...';
 
-    // 构建存储路径: {user_id}/{timestamp}-{filename}
     const timestamp = Date.now();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._\-一-鿿]/g, '_');
+    const safeName = file.name.replace(/[^a-zA-Z0-9._\-一-鿿㐀-䶿]/g, '_');
     const storagePath = `${currentUser.id}/${timestamp}-${safeName}`;
 
     console.log('[Upload] 存储路径:', storagePath);
     console.log('[Upload] Bucket:', STORAGE_BUCKET);
 
-    // 上传到 Supabase Storage
+    // 大文件使用 TUS 断点续传（> 20MB），小文件直接上传
+    const useTus = file.size > 20 * 1024 * 1024;
+    console.log('[Upload] 上传模式:', useTus ? 'TUS 断点续传' : '直接上传');
+
     const { data: uploadData, error: uploadError } = await sb.storage
       .from(STORAGE_BUCKET)
       .upload(storagePath, file, {
         cacheControl: '3600',
         upsert: false,
+        contentType: mimeType || 'application/octet-stream',
+        ...(useTus ? { resumable: true } : {}),
       });
 
     if (uploadError) {
@@ -637,13 +651,13 @@ async function uploadSingleFile(file, progressItem, sb) {
     progressFill.style.width = '80%';
     statusEl.textContent = '保存中...';
 
-    // 创建文件记录
-    const category = getFileCategory(file.type);
+    // 使用检测到的 MIME 类型进行分类
+    const category = getFileCategory(mimeType);
     const fileRecord = {
       user_id: currentUser.id,
       filename: safeName,
       original_name: file.name,
-      file_type: file.type,
+      file_type: mimeType,
       file_size: file.size,
       storage_path: storagePath,
       category: category,
@@ -674,6 +688,63 @@ async function uploadSingleFile(file, progressItem, sb) {
     statusEl.classList.add('error');
     return false;
   }
+}
+
+/** 通过文件扩展名检测 MIME 类型 */
+function detectMimeType(filename) {
+  const name = (filename || '').toLowerCase();
+  const extMap = {
+    // 图片
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+    '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.tiff': 'image/tiff',
+    '.tif': 'image/tiff', '.heic': 'image/heic', '.heif': 'image/heif',
+    '.avif': 'image/avif', '.jfif': 'image/jpeg', '.pjpeg': 'image/jpeg',
+    '.pjp': 'image/jpeg', '.raw': 'image/x-raw', '.cr2': 'image/x-canon-cr2',
+    '.nef': 'image/x-nikon-nef', '.arw': 'image/x-sony-arw',
+    // 视频
+    '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogv': 'video/ogg',
+    '.mov': 'video/quicktime', '.avi': 'video/x-msvideo', '.wmv': 'video/x-ms-wmv',
+    '.flv': 'video/x-flv', '.mkv': 'video/x-matroska', '.m4v': 'video/mp4',
+    '.mpg': 'video/mpeg', '.mpeg': 'video/mpeg', '.3gp': 'video/3gpp',
+    '.3g2': 'video/3gpp2', '.ts': 'video/mp2t', '.mts': 'video/mp2t',
+    '.m2ts': 'video/mp2t', '.vob': 'video/dvd', '.rm': 'video/x-pn-realvideo',
+    '.rmvb': 'video/x-pn-realvideo', '.asf': 'video/x-ms-asf',
+    // 音频
+    '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+    '.flac': 'audio/flac', '.aac': 'audio/aac', '.m4a': 'audio/mp4',
+    '.wma': 'audio/x-ms-wma', '.opus': 'audio/opus', '.mid': 'audio/midi',
+    '.midi': 'audio/midi', '.aiff': 'audio/aiff', '.ape': 'audio/ape',
+    // 文档
+    '.pdf': 'application/pdf',
+    '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.odt': 'application/vnd.oasis.opendocument.text',
+    '.ods': 'application/vnd.oasis.opendocument.spreadsheet',
+    '.odp': 'application/vnd.oasis.opendocument.presentation',
+    // 文本
+    '.txt': 'text/plain', '.md': 'text/markdown', '.csv': 'text/csv',
+    '.json': 'application/json', '.xml': 'application/xml',
+    '.html': 'text/html', '.htm': 'text/html', '.css': 'text/css',
+    '.js': 'application/javascript', '.ts': 'application/typescript',
+    '.py': 'text/x-python', '.rb': 'text/x-ruby', '.php': 'application/x-httpd-php',
+    '.java': 'text/x-java', '.c': 'text/x-c', '.cpp': 'text/x-c++',
+    '.h': 'text/x-c', '.hpp': 'text/x-c++', '.rs': 'text/x-rust',
+    '.go': 'text/x-go', '.sh': 'application/x-sh', '.bash': 'application/x-sh',
+    '.bat': 'application/x-bat', '.cmd': 'application/x-cmd',
+    '.ps1': 'application/x-powershell', '.sql': 'application/sql',
+    '.yml': 'application/x-yaml', '.yaml': 'application/x-yaml',
+    '.toml': 'application/toml', '.ini': 'text/plain',
+    '.log': 'text/plain', '.env': 'text/plain',
+    // 压缩包
+    '.zip': 'application/zip', '.rar': 'application/x-rar-compressed',
+    '.7z': 'application/x-7z-compressed', '.tar': 'application/x-tar',
+    '.gz': 'application/gzip', '.bz2': 'application/x-bzip2',
+    '.xz': 'application/x-xz', '.zst': 'application/zstd',
+  };
+  const ext = name.substring(name.lastIndexOf('.'));
+  return extMap[ext] || 'application/octet-stream';
 }
 
 // ==================== 文件下载 ====================
@@ -834,6 +905,11 @@ async function openPreview(fileId) {
   const modal = document.getElementById('previewModal');
   const img = document.getElementById('previewImage');
   const video = document.getElementById('previewVideo');
+  const textPre = document.getElementById('previewText');
+  const docIframe = document.getElementById('previewDoc');
+  const audioWrap = document.getElementById('previewAudioWrap');
+  const audioEl = document.getElementById('previewAudio');
+  const audioName = document.getElementById('previewAudioName');
   const unsupported = document.getElementById('previewUnsupported');
   const filename = document.getElementById('previewFilename');
 
@@ -841,12 +917,13 @@ async function openPreview(fileId) {
   modal.dataset.fileId = fileId;
   filename.textContent = file.original_name;
 
-  // 重置
-  img.style.display = 'none';
-  video.style.display = 'none';
+  // 重置所有预览元素
+  img.style.display = 'none'; img.src = '';
+  video.style.display = 'none'; video.src = '';
+  textPre.style.display = 'none'; textPre.textContent = '';
+  docIframe.style.display = 'none'; docIframe.src = '';
+  audioWrap.style.display = 'none'; audioEl.src = '';
   unsupported.style.display = 'none';
-  img.src = '';
-  video.src = '';
 
   // 获取签名 URL
   const sb = getSupabase();
@@ -855,10 +932,9 @@ async function openPreview(fileId) {
     try {
       const { data } = await sb.storage
         .from(STORAGE_BUCKET)
-        .createSignedUrl(file.storage_path, 300);
+        .createSignedUrl(file.storage_path, 600);
       if (data?.signedUrl) url = data.signedUrl;
     } catch (e) {
-      // 回退到公开 URL
       const { data: publicData } = sb.storage
         .from(STORAGE_BUCKET)
         .getPublicUrl(file.storage_path);
@@ -869,24 +945,82 @@ async function openPreview(fileId) {
   if (file.category === 'image') {
     img.src = url;
     img.style.display = 'block';
-    // 更新预览下载按钮
-    document.getElementById('previewUnsupportedDownload').onclick = () => downloadFile(fileId);
   } else if (file.category === 'video') {
     video.src = url;
     video.style.display = 'block';
+  } else if (file.category === 'audio') {
+    audioName.textContent = file.original_name;
+    audioEl.src = url;
+    audioWrap.style.display = 'block';
+  } else if (isTextFile(file)) {
+    // 文本文件：fetch 内容并显示
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const text = await res.text();
+        textPre.textContent = text;
+        textPre.style.display = 'block';
+      } else {
+        throw new Error('fetch failed');
+      }
+    } catch (e) {
+      // 回退：显示下载
+      unsupported.style.display = 'block';
+      document.getElementById('previewUnsupportedDownload').onclick = () => downloadFile(fileId);
+    }
+  } else if (file.file_type === 'application/pdf' || isDocumentPreviewable(file)) {
+    // PDF 和其他浏览器可预览的文档用 iframe
+    docIframe.src = url;
+    docIframe.style.display = 'block';
   } else {
     unsupported.style.display = 'block';
     document.getElementById('previewUnsupportedDownload').onclick = () => downloadFile(fileId);
   }
 }
 
+/** 判断是否为文本文件 */
+function isTextFile(file) {
+  const textTypes = [
+    'text/', 'application/json', 'application/javascript', 'application/xml',
+    'application/x-httpd-php', 'application/x-sh', 'application/x-bat',
+    'application/x-cmd', 'application/x-powershell',
+  ];
+  const textExts = ['.txt', '.md', '.log', '.csv', '.yml', '.yaml', '.toml', '.ini',
+    '.cfg', '.conf', '.env', '.py', '.js', '.ts', '.jsx', '.tsx', '.css', '.html',
+    '.htm', '.xml', '.json', '.sh', '.bash', '.zsh', '.bat', '.cmd', '.ps1',
+    '.sql', '.rb', '.php', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp',
+    '.vue', '.svelte', '.astro', '.gitignore', '.dockerignore', '.editorconfig',
+  ];
+  const name = (file.original_name || '').toLowerCase();
+  const type = (file.file_type || '').toLowerCase();
+  if (textTypes.some(t => type.startsWith(t))) return true;
+  if (textExts.some(ext => name.endsWith(ext))) return true;
+  return false;
+}
+
+/** 判断是否为浏览器可预览的文档 */
+function isDocumentPreviewable(file) {
+  const previewTypes = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ];
+  const name = (file.original_name || '').toLowerCase();
+  if (previewTypes.includes(file.file_type)) return true;
+  if (name.endsWith('.pdf')) return true;
+  return false;
+}
+
 function closePreview() {
   const modal = document.getElementById('previewModal');
-  const video = document.getElementById('previewVideo');
   modal.style.display = 'none';
-  video.pause();
-  video.src = '';
+  document.getElementById('previewVideo').pause();
+  document.getElementById('previewVideo').src = '';
   document.getElementById('previewImage').src = '';
+  document.getElementById('previewText').textContent = '';
+  document.getElementById('previewDoc').src = '';
+  document.getElementById('previewAudio').src = '';
 }
 
 // ==================== 删除密码模态框 ====================
@@ -935,7 +1069,11 @@ async function openAdminModal() {
   document.getElementById('adminModal').style.display = 'flex';
   document.getElementById('newUsername').value = '';
   document.getElementById('newUserPassword').value = '';
+  document.getElementById('changePwdOld').value = '';
+  document.getElementById('changePwdNew').value = '';
   document.getElementById('adminCreateError').style.display = 'none';
+  document.getElementById('changePwdError').style.display = 'none';
+  document.getElementById('changePwdSuccess').style.display = 'none';
   await loadManagedUsers();
 }
 
@@ -975,6 +1113,40 @@ async function handleCreateUser() {
     await loadManagedUsers();
   } else {
     errorEl.textContent = result.error;
+    errorEl.style.display = 'block';
+  }
+}
+
+async function handleChangePassword() {
+  const oldPwd = document.getElementById('changePwdOld').value;
+  const newPwd = document.getElementById('changePwdNew').value;
+  const errorEl = document.getElementById('changePwdError');
+  const successEl = document.getElementById('changePwdSuccess');
+
+  errorEl.style.display = 'none';
+  successEl.style.display = 'none';
+
+  if (!oldPwd || !newPwd) {
+    errorEl.textContent = '请填写当前密码和新密码';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  if (newPwd.length < 3) {
+    errorEl.textContent = '新密码至少需要3个字符';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const result = await changePassword(currentUser.id, oldPwd, newPwd);
+  if (result.success) {
+    successEl.textContent = '密码修改成功';
+    successEl.style.display = 'block';
+    document.getElementById('changePwdOld').value = '';
+    document.getElementById('changePwdNew').value = '';
+    setTimeout(() => { successEl.style.display = 'none'; }, 3000);
+  } else {
+    errorEl.textContent = result.error || '修改失败';
     errorEl.style.display = 'block';
   }
 }
@@ -1063,6 +1235,7 @@ function getFileCategory(mimeType) {
   if (!mimeType) return 'other';
   if (mimeType.startsWith('image/')) return 'image';
   if (mimeType.startsWith('video/')) return 'video';
+  if (mimeType.startsWith('audio/')) return 'audio';
   return 'document';
 }
 
@@ -1071,13 +1244,11 @@ function getThumbnailUrl(file) {
   if (!sb) return '';
 
   if (file.category === 'image') {
-    // 使用 Supabase 图片转换生成缩略图
     const { data } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(file.storage_path);
     return data?.publicUrl || '';
   }
 
   if (file.category === 'video') {
-    // 视频使用默认封面
     return 'data:image/svg+xml,' + encodeURIComponent(`
       <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
         <rect fill="#1e293b" width="400" height="300"/>
@@ -1087,8 +1258,17 @@ function getThumbnailUrl(file) {
     `);
   }
 
-  // 文档图标
-  const icon = getFileIcon(file.file_type);
+  if (file.category === 'audio') {
+    return 'data:image/svg+xml,' + encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+        <rect fill="#1e293b" width="400" height="300"/>
+        <circle cx="200" cy="130" r="40" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.6"/>
+        <polygon points="185,115 185,145 220,130" fill="#a855f7" opacity="0.7"/>
+        <text x="200" y="220" text-anchor="middle" fill="#64748b" font-size="20" font-family="sans-serif">Audio</text>
+      </svg>
+    `);
+  }
+
   return '';
 }
 
